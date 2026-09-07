@@ -253,6 +253,9 @@ func filterWorkerArgs(args []string) []string {
 		if strings.HasPrefix(arg, "-r=") || strings.HasPrefix(arg, "--remote-hostengine-info=") {
 			continue
 		}
+		if arg == "-n" || arg == "--no-hostname" {
+			continue
+		}
 		if arg == "--internal-worker" ||
 			arg == "--internal-worker-socket" ||
 			arg == "--internal-worker-alias" {

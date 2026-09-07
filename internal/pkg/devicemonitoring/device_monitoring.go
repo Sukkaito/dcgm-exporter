@@ -62,6 +62,9 @@ func handleGPUOptions(deviceInfo deviceinfo.Provider) []Info {
 		for _, gpuID := range deviceInfo.GOpts().MajorRange {
 			// We've already verified that everything in the options list exists
 			monitoring = append(monitoring, *monitorGPU(deviceInfo, gpuID))
+			if m := monitorGPU(deviceInfo, gpuID); m != nil {
+				monitoring = append(monitoring, *m)
+			}
 		}
 	}
 
@@ -71,6 +74,9 @@ func handleGPUOptions(deviceInfo deviceinfo.Provider) []Info {
 		for _, gpuInstanceID := range deviceInfo.GOpts().MinorRange {
 			// We've already verified that everything in the options list exists
 			monitoring = append(monitoring, *monitorGPUInstance(deviceInfo, gpuInstanceID))
+			if m := monitorGPUInstance(deviceInfo, gpuInstanceID); m != nil {
+				monitoring = append(monitoring, *m)
+			}
 		}
 	}
 

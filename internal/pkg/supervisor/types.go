@@ -49,3 +49,4 @@ type Aggregator interface {
 	ScrapeAll(ctx context.Context) ([]byte, error)
 	Statuses() []WorkerStatus
 }
+

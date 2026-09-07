@@ -147,3 +147,4 @@ func RunSupervisor(lifecycleCtx context.Context, c *cli.Context, config *appconf
 
 	return nil
 }
+

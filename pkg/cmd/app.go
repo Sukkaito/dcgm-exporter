@@ -523,6 +523,13 @@ func runDCGMExporter(lifecycleCtx context.Context, c *cli.Context, reloadRequest
 
 	// For multiple remote sources, run as supervisor/aggregator managing worker subprocesses.
 	if len(config.RemoteSources) > 1 && !config.IsWorker {
+		if config.NoHostname {
+			slog.Warn("Option --no-hostname is disabled in multi-source mode to prevent duplicate metric label collisions; keeping hostname enabled")
+			config.NoHostname = false
+		}
+		if config.Kubernetes {
+			slog.Warn("Option --kubernetes uses node-local kubelet pod-resources which only maps pods on the local node; remote host GPU metrics cannot map remote Kubernetes pods")
+		}
 		return runSupervisorFunc(lifecycleCtx, c, config)
 	}
 
