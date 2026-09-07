@@ -19,6 +19,7 @@ package hostname
 import (
 	"net"
 	"net/url"
+	"path/filepath"
 	"strings"
 
 	"github.com/NVIDIA/dcgm-exporter/internal/pkg/appconfig"
@@ -29,6 +30,9 @@ var os osinterface.OS = osinterface.RealOS{}
 
 // GetHostname return a hostname where metric was collected.
 func GetHostname(config *appconfig.Config) (string, error) {
+	if config.WorkerHostAlias != "" {
+		return config.WorkerHostAlias, nil
+	}
 	if config.Kubernetes {
 		/* in kubernetes, the remote hostname is generic and local, so it's not useful */
 		return getLocalHostname()
@@ -37,6 +41,68 @@ func GetHostname(config *appconfig.Config) (string, error) {
 		return parseRemoteHostname(config)
 	}
 	return getLocalHostname()
+}
+
+// DeriveRemoteSource parses a raw remote source string (e.g. "vm1=vsock://3:5555" or "10.0.0.1:5555")
+// into a RemoteSourceSpec with alias, connection URI, and source transport type.
+// If no alias is provided, it defaults to the derived hostname for the given URI.
+func DeriveRemoteSource(raw string) (appconfig.RemoteSourceSpec, error) {
+	raw = strings.TrimSpace(raw)
+	var alias, uri string
+	if parts := strings.SplitN(raw, "=", 2); len(parts) == 2 {
+		alias = strings.TrimSpace(parts[0])
+		uri = strings.TrimSpace(parts[1])
+	} else {
+		uri = raw
+	}
+
+	sourceType := "bare"
+	derivedHost := uri
+
+	if u, err := url.Parse(uri); err == nil && u.Scheme != "" {
+		scheme := strings.ToLower(u.Scheme)
+		sourceType = scheme
+		switch scheme {
+		case "tcp":
+			if h := u.Hostname(); h != "" {
+				derivedHost = h
+			}
+		case "unix":
+			base := filepath.Base(u.Path)
+			base = strings.TrimSuffix(base, ".sock")
+			if base == "" || base == "/" || base == "." {
+				derivedHost = "unix-socket"
+			} else {
+				derivedHost = "unix-" + base
+			}
+		case "vsock":
+			if cid := u.Hostname(); cid != "" {
+				derivedHost = "vsock-cid-" + cid
+			} else {
+				derivedHost = "vsock"
+			}
+		default:
+			derivedHost = uri
+		}
+	} else {
+		sourceType = "bare"
+		if h, _, err := net.SplitHostPort(uri); err == nil && h != "" {
+			derivedHost = h
+		} else {
+			derivedHost = uri
+		}
+	}
+
+	if alias == "" {
+		alias = derivedHost
+	}
+
+	return appconfig.RemoteSourceSpec{
+		Raw:        raw,
+		Alias:      alias,
+		URI:        uri,
+		SourceType: sourceType,
+	}, nil
 }
 
 func parseRemoteHostname(config *appconfig.Config) (string, error) {

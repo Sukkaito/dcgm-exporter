@@ -35,6 +35,7 @@ import (
 	"github.com/NVIDIA/dcgm-exporter/internal/pkg/registry"
 	"github.com/NVIDIA/dcgm-exporter/internal/pkg/server"
 	"github.com/NVIDIA/dcgm-exporter/internal/pkg/stdout"
+	"github.com/NVIDIA/dcgm-exporter/internal/pkg/supervisor"
 	"github.com/NVIDIA/dcgm-exporter/internal/pkg/watcher"
 )
 
@@ -111,6 +112,9 @@ const (
 	CLIEnableGPUBindUnbindWatch         = "enable-gpu-bind-unbind-watch"
 	CLIGPUBindUnbindPollInterval        = "gpu-bind-unbind-poll-interval"
 	CLIEnablePprof                      = "enable-pprof"
+	CLIInternalWorker                   = "internal-worker"
+	CLIInternalWorkerSocket             = "internal-worker-socket"
+	CLIInternalWorkerAlias              = "internal-worker-alias"
 )
 
 var (
@@ -125,6 +129,7 @@ var (
 	newMetricsServerFunc        = server.NewMetricsServer
 	newFileWatcherFunc          = watcher.NewFileWatcher
 	newGPUBindUnbindWatcherFunc = watcher.NewGPUBindUnbindWatcher
+	runSupervisorFunc           = supervisor.RunSupervisor
 )
 
 func NewApp(buildVersion ...string) *cli.App {
@@ -214,8 +219,23 @@ func NewApp(buildVersion ...string) *cli.App {
 			Name:    CLIRemoteHEInfo,
 			Aliases: []string{"r"},
 			Value:   "localhost:5555",
-			Usage:   "Connect to remote hostengine at <HOST>:<PORT> or a DCGM URI (tcp://<HOST>:<PORT>, unix:///<SOCKET_PATH>, vsock://<CID>:<PORT>). For IPv6, use \"[<IPv6_ADDR>]:<PORT>\" (e.g., \"[::1]:5555\")",
+			Usage:   "Connect to remote hostengine(s) at <HOST>:<PORT> or DCGM URIs (tcp://, unix://, vsock://). Supports comma-separated multiple sources and alias=uri syntax (e.g., \"vm1=vsock://3:5555,node1=10.0.0.1:5555\"). For IPv6, use \"[<IPv6_ADDR>]:<PORT>\" (e.g., \"[::1]:5555\")",
 			EnvVars: []string{"DCGM_REMOTE_HOSTENGINE_INFO"},
+		},
+		&cli.BoolFlag{
+			Name:   CLIInternalWorker,
+			Hidden: true,
+			Value:  false,
+		},
+		&cli.StringFlag{
+			Name:   CLIInternalWorkerSocket,
+			Hidden: true,
+			Value:  "",
+		},
+		&cli.StringFlag{
+			Name:   CLIInternalWorkerAlias,
+			Hidden: true,
+			Value:  "",
 		},
 		&cli.BoolFlag{
 			Name:    CLIKubernetesEnablePodLabels,
@@ -499,6 +519,11 @@ func runDCGMExporter(lifecycleCtx context.Context, c *cli.Context, reloadRequest
 	config, err := contextToConfig(c)
 	if err != nil {
 		return err
+	}
+
+	// For multiple remote sources, run as supervisor/aggregator managing worker subprocesses.
+	if len(config.RemoteSources) > 1 && !config.IsWorker {
+		return runSupervisorFunc(lifecycleCtx, c, config)
 	}
 
 	// Validate prerequisites once
@@ -1514,9 +1539,38 @@ func applyExplicitConfigOverrides(c *cli.Context, config *appconfig.Config) erro
 	if c.IsSet(CLIUseOldNamespace) {
 		config.UseOldNamespace = c.Bool(CLIUseOldNamespace)
 	}
+	if c.IsSet(CLIInternalWorker) {
+		config.IsWorker = c.Bool(CLIInternalWorker)
+	}
+	if c.IsSet(CLIInternalWorkerSocket) {
+		config.WorkerIPCSocket = c.String(CLIInternalWorkerSocket)
+	}
+	if c.IsSet(CLIInternalWorkerAlias) {
+		config.WorkerHostAlias = c.String(CLIInternalWorkerAlias)
+	}
 	if c.IsSet(CLIRemoteHEInfo) {
 		config.UseRemoteHE = true
-		config.RemoteHEInfo = c.String(CLIRemoteHEInfo)
+		rawStr := c.String(CLIRemoteHEInfo)
+		var sources []appconfig.RemoteSourceSpec
+		for _, part := range strings.Split(rawStr, ",") {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			spec, err := hostname.DeriveRemoteSource(part)
+			if err == nil {
+				sources = append(sources, spec)
+			}
+		}
+		config.RemoteSources = sources
+		if len(sources) > 0 {
+			config.RemoteHEInfo = sources[0].URI
+			if config.WorkerHostAlias == "" && len(sources) == 1 {
+				config.WorkerHostAlias = sources[0].Alias
+			}
+		} else {
+			config.RemoteHEInfo = rawStr
+		}
 	}
 	if c.IsSet(CLIGPUDevices) {
 		opt, err := parseDeviceOptions(c.String(CLIGPUDevices))

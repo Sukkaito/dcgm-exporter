@@ -99,6 +99,10 @@ type Config struct {
 	UseOldNamespace                  bool
 	UseRemoteHE                      bool
 	RemoteHEInfo                     string
+	RemoteSources                    []RemoteSourceSpec // Configured remote hostengine sources
+	IsWorker                         bool               // Running as internal child worker process
+	WorkerIPCSocket                  string             // Unix socket path for worker IPC
+	WorkerHostAlias                  string             // Specific hostname alias assigned to this worker
 	GPUDeviceOptions                 DeviceOptions
 	SwitchDeviceOptions              DeviceOptions
 	CPUDeviceOptions                 DeviceOptions
@@ -132,6 +136,14 @@ type Config struct {
 	EnablePprof                      bool          // Enable /debug/pprof/ HTTP endpoints
 }
 
+// RemoteSourceSpec defines a connection target to a remote nv-hostengine instance.
+type RemoteSourceSpec struct {
+	Raw        string // Original input (e.g., "vm1=vsock://3:5555" or "10.0.0.1:5555")
+	Alias      string // Hostname alias used for metrics; defaults to derived hostname
+	URI        string // Parsed connection URI or host:port
+	SourceType string // Transport type ("tcp", "vsock", "unix", "bare")
+}
+
 // Clone returns a copy of Config with slices duplicated for reload snapshots.
 func (c *Config) Clone() *Config {
 	if c == nil {
@@ -139,6 +151,7 @@ func (c *Config) Clone() *Config {
 	}
 
 	clone := *c
+	clone.RemoteSources = append([]RemoteSourceSpec(nil), c.RemoteSources...)
 	clone.KubernetesPodLabelAllowlistRegex = append([]string(nil), c.KubernetesPodLabelAllowlistRegex...)
 	clone.NvidiaResourceNames = append([]string(nil), c.NvidiaResourceNames...)
 	clone.MetricSource.Fields = append([]MetricField(nil), c.MetricSource.Fields...)

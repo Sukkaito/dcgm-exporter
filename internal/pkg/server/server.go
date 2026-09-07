@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/pprof"
 	"os"
@@ -240,6 +241,21 @@ func (s *MetricsServer) Run(ctx context.Context, stop chan interface{}) {
 				slog.String("note", "Debug files may be created during operation and cleaned up automatically"))
 		} else {
 			slog.Debug("Debug dumps disabled - use --dump-enabled flag to enable file-based debugging")
+		}
+
+		if s.config.WorkerIPCSocket != "" {
+			listener, err := net.Listen("unix", s.config.WorkerIPCSocket)
+			if err != nil {
+				slog.Error("Failed to listen on worker unix socket", slog.String(logging.ErrorKey, err.Error()))
+				os.Exit(1)
+			}
+			defer listener.Close()
+			slog.Info("Worker HTTP server listening on unix socket", slog.String("socket", s.config.WorkerIPCSocket))
+			if err := s.server.Serve(listener); err != nil && err != http.ErrServerClosed {
+				slog.Error("Failed to serve worker HTTP server", slog.String(logging.ErrorKey, err.Error()))
+				os.Exit(1)
+			}
+			return
 		}
 
 		if err := web.ListenAndServe(s.server, s.webConfig, slog.Default()); err != nil && err != http.ErrServerClosed {

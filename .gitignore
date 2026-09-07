@@ -256,3 +256,7 @@ $RECYCLE.BIN/
 # Windows shortcuts
 *.lnk
 .vscode/settings.json
+
+# Local agent skills
+.agents
+skills-lock.json

@@ -29,8 +29,10 @@ arguments: []
 # will be passed through.
 # Use "-r", "<HOST>:<PORT>" or a DCGM connection string to connect to an already running hostengine.
 # Connection string formats: "tcp://<HOST>:<PORT>", "unix:///<SOCKET_PATH>", or "vsock://<CID>:<PORT>".
-# Example arguments: ["-r", "host123:5555"]
-# Example VSOCK arguments: ["-r", "vsock://3:5555"]
+# Multiple sources can be specified comma-separated with optional alias prefixes (e.g. "alias=uri"):
+# Example single arguments: ["-r", "host123:5555"]
+# Example multi-source arguments: ["-r", "host1:5555,host2:5555"]
+# Example mixed host types with aliases: ["-r", "vm1=vsock://3:5555,node1=tcp://10.0.0.1:5555,local=unix:///var/run/dcgm/dcgm.sock"]
 # Use "-n" to remove the hostname tag from the output.
 # Example arguments: ["-n"]
 # Use "-d" to specify the devices to monitor. -d must be followed by a string
